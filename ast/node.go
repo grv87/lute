@@ -12,6 +12,7 @@ package ast
 
 import (
 	"bytes"
+	"fmt"
 	"math/rand"
 	"sort"
 	"strings"
@@ -19,10 +20,13 @@ import (
 	"time"
 	"unicode/utf8"
 
+	cuuid "github.com/davidmz/go-compact-uuid"
+
 	"github.com/88250/lute/editor"
 	"github.com/88250/lute/html"
 	"github.com/88250/lute/lex"
 	"github.com/88250/lute/util"
+	"github.com/google/uuid"
 )
 
 // Node 描述了节点结构。
@@ -161,44 +165,41 @@ var Testing bool
 
 func NewNodeID() string {
 	if Testing {
-		return "20060102150405-1a2b3c4" // 测试环境 ID
+		return "0224bmnz8gw0080000000t5cy4" // 测试环境 ID
 	}
-	now := time.Now()
-	return now.Format("20060102150405") + "-" + randStr(7)
+	uuid, err := uuid.NewV7()
+	if nil != err {
+		panic(err)
+	}
+	return cuuid.UUID(uuid).String()
 }
 
 func IsNodeIDPattern(str string) bool {
-	if len("20060102150405-1a2b3c4") != len(str) {
-		return false
-	}
+	_, err := cuuid.FromString(str)
+	return err == nil
+}
 
-	if 1 != strings.Count(str, "-") {
-		return false
+func GetTimeFromID(str string) (time.Time, error) {
+	var created time.Time
+	uid, err := cuuid.FromString(str)
+	if err != nil {
+		return created, err
 	}
-
-	parts := strings.Split(str, "-")
-	idPart := parts[0]
-	if 14 != len(idPart) {
-		return false
+	uid2 := uuid.UUID(uid)
+	vr := uid2.Variant()
+	if vr != uuid.RFC4122 {
+		return created, fmt.Errorf("invalid uuid variant: %s", vr)
 	}
-
-	for _, c := range idPart {
-		if !('0' <= c && '9' >= c) {
-			return false
-		}
+	ver := uid2.Version()
+	switch ver {
+	case 1, 2, 6, 7:
+		sec, nsec := uid2.Time().UnixTime()
+		created = time.Unix(sec, nsec)
+		// created, parseErr := time.ParseInLocation("20060102150405", createdStr, time.Local)
+	default:
+		return created, fmt.Errorf("invalid uuid version: %d", ver)
 	}
-
-	randPart := parts[1]
-	if 7 != len(randPart) {
-		return false
-	}
-
-	for _, c := range randPart {
-		if !('a' <= c && 'z' >= c) && !('0' <= c && '9' >= c) {
-			return false
-		}
-	}
-	return true
+	return created, nil
 }
 
 func init() {
